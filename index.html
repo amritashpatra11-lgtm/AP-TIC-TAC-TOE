@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AP Tic-Tac-Toe</title>
+    <style>
+        /* ==========================================================================
+           CSS VARIABLES & THEMING ENGINE
+           ========================================================================== */
+        :root {
+            --theme-hue: 190; /* Cyan */
+            --bg-dark: #050505;
+            --bg-panel: rgba(15, 15, 20, 0.4);
+            --bg-panel-border: rgba(255, 255, 255, 0.08);
+            
+            --neon-primary: hsl(var(--theme-hue), 100%, 60%);
+            --neon-primary-dim: hsl(var(--theme-hue), 100%, 60%, 0.2);
+            --neon-secondary: hsl(calc(var(--theme-hue) + 120), 100%, 65%);
+            --neon-alert: hsl(340, 100%, 60%);
+            
+            --text-main: #ffffff;
+            --text-muted: #888899;
+            
+            --glass-blur: blur(16px);
+            --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+            --ease-in-out-circ: cubic-bezier(0.785, 0.135, 0.15, 0.86);
+            
+            /* High Performance Timings */
+            --snappy-time: 0.125s; /* 125ms for rapid 60fps feel */
+            
+            --board-size: min(85vw, 450px);
+            --cell-size: calc(var(--board-size) / 3);
+        }
+
+        /* ==========================================================================
+           RESET & BASE STYLES
+           ========================================================================== */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-dark);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-main);
+            overflow: hidden; /* Prevent accidental scrolling */
+            touch-action: none;
+            perspective: 1000px;
+        }
+
+        /* ==========================================================================
+           CANVAS LAYERS (BACKGROUND & FOREGROUND VFX)
+           ========================================================================== */
+        #bg-canvas, #vfx-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+            will-change: transform, opacity;
+        }
+        #vfx-canvas {
+            z-index: 100; /* Particles go over everything */
+        }
+
+        /* ==========================================================================
+           UI ARCHITECTURE & GLASSMORPHISM
+           ========================================================================== */
+        #app-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        .glass-panel {
+            background: var(--bg-panel);
+            backdrop-filter: var(--glass-blur);
+            -webkit-backdrop-filter: var(--glass-blur);
+            border: 1px solid var(--bg-panel-border);
+            border-radius: 24px;
+            box-shadow: 
+                0 25px 50px -12px rgba(0, 0, 0, 0.7),
+                inset 0 1px 1px rgba(255, 255, 255, 0.05);
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: transform 0.4s var(--ease-spring), opacity 0.4s ease;
+            will-change: transform, opacity;
+        }
+
+        .screen {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(0.9) translateY(20px);
+            transition: opacity 0.3s var(--ease-out-expo), transform 0.3s var(--ease-out-expo);
+            will-change: transform, opacity;
+        }
+
+        .screen.active {
+            opacity: 1;
+            pointer-events: auto;
+            transform: scale(1) translateY(0);
+        }
+
+        /* ==========================================================================
+           TYPOGRAPHY & BUTTONS
+           ========================================================================== */
+        h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+            margin-bottom: 5px;
+            background: linear-gradient(135deg, #fff, var(--text-muted));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px var(--neon-primary-dim);
+            text-align: center;
+        }
+        
+        h2 {
+            font-size: 1.5rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+
+        .dev-credit {
+            font-size: 0.95rem;
+            font-weight: 600;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--neon-primary);
+            text-shadow: 0 0 10px var(--neon-primary-dim);
+            margin-bottom: 30px;
+            background: rgba(0,0,0,0.3);
+            padding: 5px 15px;
+            border-radius: 20px;
+            border: 1px solid var(--neon-primary-dim);
+        }
+
+        button {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--bg-panel-border);
+            color: var(--text-main);
+            font-size: 1.1rem;
+            font-weight: 600;
+            padding: 16px 32px;
+            border-radius: 16px;
+            cursor: pointer;
+            margin: 8px 0;
+            width: 100%;
+            max-width: 300px;
+            position: relative;
+            overflow: hidden;
+            transition: all var(--snappy-time) var(--ease-out-expo);
+            backdrop-filter: blur(5px);
+            will-change: transform, box-shadow;
+        }
+
+        button::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%; width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+            transition: left 0.4s ease;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3), 0 0 15px var(--neon-primary-dim);
+            border-color: var(--neon-primary);
+            color: var(--neon-primary);
+        }
+
+        button:hover::before { left: 100%; }
+        button:active { transform: translateY(1px) scale(0.98); transition: transform 0.05s ease; }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--neon-primary-dim), transparent);
+            border-color: var(--neon-primary);
+            text-shadow: 0 0 10px var(--neon-primary);
+        }
+
+        /* ==========================================================================
+           GAME UI ELEMENTS
+           ========================================================================== */
+        .top-bar {
+            position: absolute;
+            top: 20px;
+            width: min(90vw, 600px);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 20;
+        }
+
+        .stats-hud {
+            display: flex;
+            gap: 20px;
+            background: var(--bg-panel);
+            backdrop-filter: var(--glass-blur);
+            padding: 10px 20px;
+            border-radius: 12px;
+            border: 1px solid var(--bg-panel-border);
+            font-size: 0.9rem;
+            font-weight: bold;
+            color: var(--text-muted);
+        }
+
+        .stat-value {
+            color: var(--neon-primary);
+            font-size: 1.2rem;
+            text-shadow: 0 0 10px var(--neon-primary-dim);
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .icon-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+
+        /* Turn Indicator */
+        .turn-indicator {
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: color var(--snappy-time) ease;
+        }
+        
+        .turn-indicator.x-turn { color: var(--neon-primary); text-shadow: 0 0 15px var(--neon-primary-dim); }
+        .turn-indicator.o-turn { color: var(--neon-secondary); text-shadow: 0 0 15px hsla(calc(var(--theme-hue) + 120), 100%, 60%, 0.2); }
+
+        /* ==========================================================================
+           GAME BOARD & GRID
+           ========================================================================== */
+        .board-wrapper {
+            position: relative;
+            width: var(--board-size);
+            height: var(--board-size);
+            perspective: 1000px;
+        }
+
+        .board {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 4px;
+            background: var(--bg-panel-border); /* Grid lines color */
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 0 40px rgba(0,0,0,0.8), 0 0 30px var(--neon-primary-dim);
+            transform-style: preserve-3d;
+            transition: transform var(--snappy-time) ease-out; /* Snappy parallax */
+            will-change: transform;
+        }
+
+        .cell {
+            background: var(--bg-dark); /* Cell background masks the grid gap */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+            transition: background var(--snappy-time) ease;
+        }
+
+        .cell::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, rgba(255,255,255,0.05) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity var(--snappy-time) ease;
+        }
+
+        .cell:hover::before { opacity: 1; }
+        
+        .cell.highlight {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        /* Dynamic SVG Marks */
+        .mark-svg {
+            width: 60%;
+            height: 60%;
+            filter: drop-shadow(0 0 10px currentColor);
+            overflow: visible;
+        }
+
+        .mark-svg path {
+            fill: none;
+            stroke-width: 8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .mark-x { color: var(--neon-primary); }
+        .mark-x path { stroke: var(--neon-primary); }
+        
+        .mark-o { color: var(--neon-secondary); }
+        .mark-o path { stroke: var(--neon-secondary); }
+
+        /* Laser Line */
+        #laser-container {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 50;
+        }
+
+        .laser-line {
+            stroke: var(--neon-alert);
+            stroke-width: 10;
+            stroke-linecap: round;
+            filter: drop-shadow(0 0 15px var(--neon-alert)) drop-shadow(0 0 30px var(--neon-alert));
+            stroke-dasharray: 1000;
+            stroke-dashoffset: 1000;
+            animation: shootLaser 0.4s var(--ease-spring) forwards;
+        }
+
+        /* ==========================================================================
+           ANIMATIONS & KEYFRAMES
+           ========================================================================== */
+        @keyframes drawMark {
+            to { stroke-dashoffset: 0; }
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            70% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes shootLaser {
+            to { stroke-dashoffset: 0; }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translate(0, 0) rotate(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translate(-5px, 3px) rotate(-1deg); }
+            20%, 40%, 60%, 80% { transform: translate(5px, -3px) rotate(1deg); }
+        }
+
+        .screen-shake {
+            animation: shake 0.3s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        /* ==========================================================================
+           UTILITY CLASSES
+           ========================================================================== */
+        .hidden { display: none !important; }
+        .flex-col { display: flex; flex-direction: column; gap: 15px; width: 100%; }
+        
+        /* Modal Override */
+        #result-screen .glass-panel {
+            background: rgba(5, 5, 5, 0.85);
+            border-color: var(--neon-primary);
+            box-shadow: 0 0 50px var(--neon-primary-dim);
+            text-align: center;
+        }
+        
+        #result-title {
+            font-size: 3.5rem;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="bg-canvas"></canvas>
+
+    <div id="app-container">
+        
+        <div class="top-bar screen" id="hud">
+            <div class="stats-hud">
+                <div>W: <span id="stat-wins" class="stat-value">0</span></div>
+                <div>L: <span id="stat-losses" class="stat-value">0</span></div>
+                <div>D: <span id="stat-draws" class="stat-value">0</span></div>
+            </div>
+            <div class="controls">
+                <button class="icon-btn" id="btn-undo" title="Undo Move">↩</button>
+                <button class="icon-btn" id="btn-theme" title="Change Theme">🎨</button>
+                <button class="icon-btn" id="btn-quit" title="Main Menu">✖</button>
+            </div>
+        </div>
+
+        <div class="screen active" id="menu-screen">
+            <div class="glass-panel">
+                <h1>AP TIC-TAC-TOE</h1>
+                <div class="dev-credit">Developed by Amritash</div>
+                <div class="flex-col">
+                    <button class="btn-primary" onclick="GameApp.Navigation.goToModeSelection()">Play Game</button>
+                    <button onclick="GameApp.Settings.resetStats()">Reset Statistics</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="screen" id="mode-screen">
+            <div class="glass-panel">
+                <h2>Select Mode</h2>
+                <div class="flex-col">
+                    <button class="btn-primary" onclick="GameApp.Engine.startGame('pvp')">Player vs Player</button>
+                    <button onclick="GameApp.Engine.startGame('ai-easy')">AI: Easy (Random)</button>
+                    <button onclick="GameApp.Engine.startGame('ai-med')">AI: Medium (Tactical)</button>
+                    <button style="border-color: var(--neon-alert); color: var(--neon-alert);" onclick="GameApp.Engine.startGame('ai-hard')">AI: Hard (Minimax)</button>
+                    <button onclick="GameApp.Navigation.goToMenu()">Back</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="screen" id="game-screen">
+            <div class="glass-panel" style="padding: 40px; background: transparent; border: none; box-shadow: none;">
+                <div class="turn-indicator" id="turn-display">Player X's Turn</div>
+                
+                <div class="board-wrapper" id="board-wrapper">
+                    <div class="board" id="board">
+                        </div>
+                    <svg id="laser-container"></svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="screen" id="result-screen">
+            <div class="glass-panel">
+                <h1 id="result-title">YOU WIN!</h1>
+                <p id="result-subtitle" style="margin-bottom: 30px; color: var(--text-muted);">Flawless Victory.</p>
+                <div class="flex-col">
+                    <button class="btn-primary" id="btn-play-again">Play Again</button>
+                    <button onclick="GameApp.Navigation.goToMenu()">Main Menu</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <canvas id="vfx-canvas"></canvas>
+
+    <script>
+        /**
+         * ============================================================================
+         * AP TIC-TAC-TOE ENGINE
+         * An extremely detailed, monolithic, production-grade implementation.
+         * Contains structural namespaces: Utils, Audio, Particles, AI, Logic, UI.
+         * Optimized for 60fps+ snappy 125ms reaction timing interactions.
+         * ============================================================================
+         */
+
+        const GameApp = (function() {
+            
+            // --- 1. UTILITIES & CONFIG ---
+            const Config = {
+                fps: 60,
+                themes: [190, 280, 340, 40, 100], // HSL Hues: Cyan, Purple, Pink, Orange, Green
+                currentThemeIdx: 0,
+                winningCombos: [
+                    [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
+                    [0, 3, 6], [1, 4, 7], [2, 5, 8], // Cols
+                    [0, 4, 8], [2, 4, 6]             // Diags
+                ]
+            };
+
+            const Utils = {
+                sleep: ms => new Promise(r => setTimeout(r, ms)),
+                rand: (min, max) => Math.random() * (max - min) + min,
+                randInt: (min, max) => Math.floor(Math.random() * (max - min + 1)) + min,
+                getElementCenter: (el) => {
+                    const rect = el.getBoundingClientRect();
+                    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+                },
+                vibrate: (pattern) => {
+                    if (navigator.vibrate) navigator.vibrate(pattern);
+                }
+            };
+
+            // --- 2. ADVANCED WEB AUDIO SYNTHESIZER ---
+            const AudioEngine = (function() {
+                let ctx = null;
+                let masterGain = null;
+                let initialized = false;
+
+                const init = () => {
+                    if (initialized) return;
+                    try {
+                        const AudioContext = window.AudioContext || window.webkitAudioContext;
+                        ctx = new AudioContext();
+                        masterGain = ctx.createGain();
+                        masterGain.gain.value = 0.3; // Global volume
+                        masterGain.connect(ctx.destination);
+                        initialized = true;
+                    } catch (e) {
+                        console.warn('Web Audio API not supported.');
+                    }
+                };
+
+                const playTone = (freq, type, duration, vol = 1, slideTo = null) => {
+                    if (!initialized) init();
+                    if (!ctx) return;
+                    
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    
+                    osc.type = type;
+                    osc.connect(gain);
+                    gain.connect(masterGain);
+                    
+                    const now = ctx.currentTime;
+                    osc.frequency.setValueAtTime(freq, now);
+                    if (slideTo) {
+                        osc.frequency.exponentialRampToValueAtTime(slideTo, now + duration);
+                    }
+                    
+                    gain.gain.setValueAtTime(0, now);
+                    gain.gain.linearRampToValueAtTime(vol, now + duration * 0.1); 
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + duration); 
+                    
+                    osc.start(now);
+                    osc.stop(now + duration);
+                };
+
+                return {
+                    init,
+                    playClick: () => playTone(800, 'sine', 0.125, 0.5),
+                    playMarkX: () => playTone(600, 'square', 0.15, 0.4, 1200),
+                    playMarkO: () => playTone(1200, 'triangle', 0.15, 0.4, 600),
+                    playWin: () => {
+                        [440, 554, 659, 880, 1108].forEach((freq, i) => {
+                            setTimeout(() => playTone(freq, 'sine', 0.3, 0.5), i * 100);
+                        });
+                    },
+                    playLose: () => {
+                        playTone(300, 'sawtooth', 0.5, 0.5, 100);
+                        setTimeout(() => playTone(250, 'sawtooth', 0.6, 0.5, 50), 200);
+                    },
+                    playDraw: () => {
+                        playTone(400, 'square', 0.3, 0.3);
+                        setTimeout(() => playTone(400, 'square', 0.3, 0.3), 150);
+                    },
+                    playAIThink: () => {
+                         playTone(150, 'sine', 0.05, 0.1);
+                    }
+                };
+            })();
+
+            // --- 3. HIGH-PERFORMANCE PARTICLE ENGINE ---
+            const ParticleSystem = (function() {
+                let vfxCanvas, vfxCtx, bgCanvas, bgCtx;
+                let particles = [];
+                let stars = [];
+                let width, height;
+                let animationId;
+
+                class Particle {
+                    constructor(x, y, color, isWin = false) {
+                        this.x = x;
+                        this.y = y;
+                        this.color = color;
+                        this.size = Utils.rand(2, isWin ? 8 : 5);
+                        const angle = Utils.rand(0, Math.PI * 2);
+                        const speed = Utils.rand(2, isWin ? 15 : 8);
+                        this.vx = Math.cos(angle) * speed;
+                        this.vy = Math.sin(angle) * speed;
+                        this.life = 1.0;
+                        this.decay = Utils.rand(0.01, 0.03);
+                        this.gravity = isWin ? 0.2 : 0;
+                    }
+                    update() {
+                        this.vy += this.gravity;
+                        this.x += this.vx;
+                        this.y += this.vy;
+                        this.life -= this.decay;
+                    }
+                    draw(ctx) {
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                        ctx.fillStyle = `hsla(${this.color}, 100%, 60%, ${this.life})`;
+                        ctx.shadowBlur = 10;
+                        ctx.shadowColor = `hsl(${this.color}, 100%, 50%)`;
+                        ctx.fill();
+                        ctx.shadowBlur = 0; 
+                    }
+                }
+
+                class Star {
+                    constructor() {
+                        this.reset();
+                    }
+                    reset() {
+                        this.x = Utils.rand(0, width);
+                        this.y = Utils.rand(0, height);
+                        this.z = Utils.rand(0.1, 2);
+                        this.opacity = Utils.rand(0.1, 0.8);
+                        this.pulse = Utils.rand(0.005, 0.02);
+                    }
+                    update(mouseX, mouseY) {
+                        this.x -= mouseX * 0.005 * this.z;
+                        this.y -= mouseY * 0.005 * this.z;
+                        
+                        if (this.x < 0) this.x = width;
+                        if (this.x > width) this.x = 0;
+                        if (this.y < 0) this.y = height;
+                        if (this.y > height) this.y = 0;
+
+                        this.opacity += this.pulse;
+                        if (this.opacity > 1 || this.opacity < 0.1) this.pulse *= -1;
+                    }
+                    draw(ctx) {
+                        ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
+                        ctx.fillRect(this.x, this.y, this.z, this.z);
+                    }
+                }
+
+                let mouseX = 0, mouseY = 0;
+                let targetMouseX = 0, targetMouseY = 0;
+
+                const init = () => {
+                    vfxCanvas = document.getElementById('vfx-canvas');
+                    bgCanvas = document.getElementById('bg-canvas');
+                    vfxCtx = vfxCanvas.getContext('2d', { alpha: true });
+                    bgCtx = bgCanvas.getContext('2d', { alpha: false }); // Optimize bg canvas
+
+                    const resize = () => {
+                        width = window.innerWidth;
+                        height = window.innerHeight;
+                        vfxCanvas.width = bgCanvas.width = width;
+                        vfxCanvas.height = bgCanvas.height = height;
+                    };
+                    window.addEventListener('resize', resize);
+                    resize();
+
+                    for(let i=0; i<150; i++) stars.push(new Star());
+
+                    window.addEventListener('mousemove', (e) => {
+                        targetMouseX = (e.clientX - width / 2);
+                        targetMouseY = (e.clientY - height / 2);
+                    });
+
+                    loop();
+                };
+
+                const emit = (x, y, colorHue, count, isWin = false) => {
+                    for(let i=0; i<count; i++) {
+                        particles.push(new Particle(x, y, colorHue, isWin));
+                    }
+                };
+
+                const loop = () => {
+                    mouseX += (targetMouseX - mouseX) * 0.15; // Increased snap speed
+                    mouseY += (targetMouseY - mouseY) * 0.15;
+
+                    vfxCtx.clearRect(0, 0, width, height);
+                    
+                    // Solid dark background clear for optimization
+                    bgCtx.fillStyle = '#050505';
+                    bgCtx.fillRect(0, 0, width, height);
+
+                    stars.forEach(s => { s.update(mouseX, mouseY); s.draw(bgCtx); });
+
+                    for (let i = particles.length - 1; i >= 0; i--) {
+                        let p = particles[i];
+                        p.update();
+                        p.draw(vfxCtx);
+                        if (p.life <= 0) particles.splice(i, 1);
+                    }
+
+                    animationId = requestAnimationFrame(loop);
+                };
+
+                const clear = () => { particles = []; };
+
+                return { init, emit, clear };
+            })();
+
+            // --- 4. ADVANCED MINIMAX AI ---
+            const AI = (function() {
+                
+                const evaluate = (board) => {
+                    for (let combo of Config.winningCombos) {
+                        const [a, b, c] = combo;
+                        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+                            return board[a] === 'O' ? 10 : -10;
+                        }
+                    }
+                    return 0;
+                };
+
+                const minimax = (board, depth, alpha, beta, isMaximizing) => {
+                    let score = evaluate(board);
+
+                    if (score === 10) return score - depth; 
+                    if (score === -10) return score + depth; 
+                    if (!board.includes(null)) return 0; 
+
+                    if (isMaximizing) {
+                        let best = -Infinity;
+                        for (let i = 0; i < 9; i++) {
+                            if (board[i] === null) {
+                                board[i] = 'O';
+                                best = Math.max(best, minimax(board, depth + 1, alpha, beta, !isMaximizing));
+                                board[i] = null;
+                                alpha = Math.max(alpha, best);
+                                if (beta <= alpha) break; 
+                            }
+                        }
+                        return best;
+                    } else {
+                        let best = Infinity;
+                        for (let i = 0; i < 9; i++) {
+                            if (board[i] === null) {
+                                board[i] = 'X';
+                                best = Math.min(best, minimax(board, depth + 1, alpha, beta, !isMaximizing));
+                                board[i] = null;
+                                beta = Math.min(beta, best);
+                                if (beta <= alpha) break;
+                            }
+                        }
+                        return best;
+                    }
+                };
+
+                const getBestMove = (board) => {
+                    let bestVal = -Infinity;
+                    let bestMove = -1;
+                    
+                    for (let i = 0; i < 9; i++) {
+                        if (board[i] === null) {
+                            board[i] = 'O'; 
+                            let moveVal = minimax(board, 0, -Infinity, Infinity, false);
+                            board[i] = null; 
+                            
+                            if (moveVal > bestVal) {
+                                bestMove = i;
+                                bestVal = moveVal;
+                            }
+                        }
+                    }
+                    return bestMove;
+                };
+
+                const getRandomMove = (board) => {
+                    const available = board.map((val, idx) => val === null ? idx : null).filter(val => val !== null);
+                    if (available.length === 0) return -1;
+                    return available[Utils.randInt(0, available.length - 1)];
+                };
+
+                const getMediumMove = (board) => {
+                    return Math.random() > 0.5 ? getBestMove(board) : getRandomMove(board);
+                };
+
+                return {
+                    computeMove: async (board, difficulty) => {
+                        let thinkInterval = setInterval(() => AudioEngine.playAIThink(), 125); // Snappy tick
+                        await Utils.sleep(Utils.randInt(300, 600)); // Snappier wait time
+                        clearInterval(thinkInterval);
+
+                        if (difficulty === 'ai-easy') return getRandomMove([...board]);
+                        if (difficulty === 'ai-med') return getMediumMove([...board]);
+                        if (difficulty === 'ai-hard') return getBestMove([...board]);
+                        return -1;
+                    }
+                };
+            })();
+
+            // --- 5. GAME LOGIC & STATE MANAGEMENT ---
+            const Logic = (function() {
+                let board = Array(9).fill(null);
+                let history = []; 
+                let currentPlayer = 'X';
+                let mode = 'pvp';
+                let gameActive = false;
+
+                const reset = (newMode = null) => {
+                    board = Array(9).fill(null);
+                    history = [];
+                    currentPlayer = 'X';
+                    gameActive = true;
+                    if (newMode) mode = newMode;
+                };
+
+                const makeMove = (index) => {
+                    if (!gameActive || board[index] !== null) return false;
+                    history.push({ board: [...board], player: currentPlayer });
+                    board[index] = currentPlayer;
+                    return true;
+                };
+
+                const undo = () => {
+                    if (history.length === 0 || !gameActive) return false;
+                    
+                    if (mode.startsWith('ai') && history.length >= 2) {
+                        history.pop(); 
+                        const prevState = history.pop(); 
+                        board = [...prevState.board];
+                        currentPlayer = 'X'; 
+                    } else {
+                        const prevState = history.pop();
+                        board = [...prevState.board];
+                        currentPlayer = prevState.player;
+                    }
+                    return true;
+                };
+
+                const checkWin = () => {
+                    for (let combo of Config.winningCombos) {
+                        const [a, b, c] = combo;
+                        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+                            return { winner: board[a], combo: combo };
+                        }
+                    }
+                    if (!board.includes(null)) return { winner: 'Draw', combo: null };
+                    return null;
+                };
+
+                const switchPlayer = () => {
+                    currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+                };
+
+                return {
+                    reset, makeMove, undo, checkWin, switchPlayer,
+                    getBoard: () => board,
+                    getCurrentPlayer: () => currentPlayer,
+                    getMode: () => mode,
+                    isActive: () => gameActive,
+                    setActive: (state) => gameActive = state
+                };
+            })();
+
+            // --- 6. USER INTERFACE & RENDERING ---
+            const UI = (function() {
+                const els = {
+                    menu: document.getElementById('menu-screen'),
+                    mode: document.getElementById('mode-screen'),
+                    game: document.getElementById('game-screen'),
+                    result: document.getElementById('result-screen'),
+                    board: document.getElementById('board'),
+                    boardWrapper: document.getElementById('board-wrapper'),
+                    laserContainer: document.getElementById('laser-container'),
+                    turnDisplay: document.getElementById('turn-display'),
+                    resTitle: document.getElementById('result-title'),
+                    resSub: document.getElementById('result-subtitle'),
+                    hudWins: document.getElementById('stat-wins'),
+                    hudLosses: document.getElementById('stat-losses'),
+                    hudDraws: document.getElementById('stat-draws'),
+                    btnUndo: document.getElementById('btn-undo')
+                };
+
+                const createBoard = () => {
+                    els.board.innerHTML = '';
+                    for (let i = 0; i < 9; i++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'cell';
+                        cell.dataset.index = i;
+                        cell.addEventListener('click', () => Engine.handleCellClick(i));
+                        els.board.appendChild(cell);
+                    }
+                };
+
+                const renderMark = (index, player) => {
+                    const cell = els.board.children[index];
+                    cell.innerHTML = ''; 
+
+                    const svgNS = "http://www.w3.org/2000/svg";
+                    const svg = document.createElementNS(svgNS, "svg");
+                    svg.setAttribute("viewBox", "0 0 100 100");
+                    svg.setAttribute("class", `mark-svg mark-${player.toLowerCase()}`);
+                    svg.style.animation = "popIn 0.25s var(--ease-spring) forwards"; // Faster Pop
+
+                    if (player === 'X') {
+                        const path1 = document.createElementNS(svgNS, "path");
+                        path1.setAttribute("d", "M 20 20 L 80 80");
+                        path1.style.strokeDasharray = "100";
+                        path1.style.strokeDashoffset = "100";
+                        path1.style.animation = "drawMark 0.15s var(--ease-out-expo) forwards";
+
+                        const path2 = document.createElementNS(svgNS, "path");
+                        path2.setAttribute("d", "M 80 20 L 20 80");
+                        path2.style.strokeDasharray = "100";
+                        path2.style.strokeDashoffset = "100";
+                        path2.style.animation = "drawMark 0.15s var(--ease-out-expo) 0.05s forwards";
+
+                        svg.appendChild(path1);
+                        svg.appendChild(path2);
+                    } else {
+                        const circle = document.createElementNS(svgNS, "path");
+                        circle.setAttribute("d", "M 50, 15 A 35,35 0 1,1 49.9,15"); 
+                        circle.style.strokeDasharray = "250";
+                        circle.style.strokeDashoffset = "250";
+                        circle.style.animation = "drawMark 0.2s var(--ease-out-expo) forwards";
+                        svg.appendChild(circle);
+                    }
+
+                    cell.appendChild(svg);
+                };
+
+                const syncBoard = (board) => {
+                    for(let i=0; i<9; i++) {
+                        const cell = els.board.children[i];
+                        if (board[i] === null) {
+                            cell.innerHTML = '';
+                            cell.classList.remove('highlight');
+                        } else if (!cell.hasChildNodes()) {
+                            renderMark(i, board[i]);
+                        }
+                    }
+                };
+
+                const updateTurnDisplay = (player) => {
+                    els.turnDisplay.textContent = player === 'X' ? "Player X's Turn" : "Player O's Turn";
+                    els.turnDisplay.className = `turn-indicator ${player.toLowerCase()}-turn`;
+                };
+
+                const updateStats = (stats) => {
+                    els.hudWins.textContent = stats.wins;
+                    els.hudLosses.textContent = stats.losses;
+                    els.hudDraws.textContent = stats.draws;
+                };
+
+                const drawLaser = (combo) => {
+                    els.laserContainer.innerHTML = ''; 
+                    if(!combo) return;
+
+                    const c1 = els.board.children[combo[0]];
+                    const c3 = els.board.children[combo[2]];
+                    
+                    const rect1 = c1.getBoundingClientRect();
+                    const rect3 = c3.getBoundingClientRect();
+                    const wrapperRect = els.boardWrapper.getBoundingClientRect();
+
+                    const x1 = rect1.left + rect1.width/2 - wrapperRect.left;
+                    const y1 = rect1.top + rect1.height/2 - wrapperRect.top;
+                    const x2 = rect3.left + rect3.width/2 - wrapperRect.left;
+                    const y2 = rect3.top + rect3.height/2 - wrapperRect.top;
+
+                    const angle = Math.atan2(y2 - y1, x2 - x1);
+                    const extension = 30;
+                    const startX = x1 - Math.cos(angle) * extension;
+                    const startY = y1 - Math.sin(angle) * extension;
+                    const endX = x2 + Math.cos(angle) * extension;
+                    const endY = y2 + Math.sin(angle) * extension;
+
+                    const svgNS = "http://www.w3.org/2000/svg";
+                    const line = document.createElementNS(svgNS, "line");
+                    line.setAttribute("x1", startX);
+                    line.setAttribute("y1", startY);
+                    line.setAttribute("x2", endX);
+                    line.setAttribute("y2", endY);
+                    line.setAttribute("class", "laser-line");
+
+                    els.laserContainer.appendChild(line);
+
+                    combo.forEach(idx => els.board.children[idx].classList.add('highlight'));
+                };
+
+                const clearBoardUI = () => {
+                    els.laserContainer.innerHTML = '';
+                    Array.from(els.board.children).forEach(cell => {
+                        cell.innerHTML = '';
+                        cell.classList.remove('highlight');
+                    });
+                };
+
+                const triggerScreenShake = () => {
+                    document.body.classList.remove('screen-shake');
+                    void document.body.offsetWidth; 
+                    document.body.classList.add('screen-shake');
+                    setTimeout(() => document.body.classList.remove('screen-shake'), 300); // Shorter shake
+                };
+
+                window.addEventListener('mousemove', (e) => {
+                    if(!els.game.classList.contains('active')) return;
+                    const xAxis = (window.innerWidth / 2 - e.pageX) / 50; // Tighter response
+                    const yAxis = (window.innerHeight / 2 - e.pageY) / 50;
+                    els.board.style.transform = `rotateY(${xAxis}deg) rotateX(${yAxis}deg)`;
+                });
+
+                return {
+                    els, createBoard, renderMark, updateTurnDisplay, drawLaser, 
+                    clearBoardUI, triggerScreenShake, updateStats, syncBoard
+                };
+            })();
+
+            // --- 7. LOCAL STORAGE / SETTINGS ---
+            const Settings = (function() {
+                const STORAGE_KEY = 'ap_tictactoe_stats';
+                let stats = { wins: 0, losses: 0, draws: 0 };
+
+                const load = () => {
+                    const data = localStorage.getItem(STORAGE_KEY);
+                    if(data) stats = JSON.parse(data);
+                    UI.updateStats(stats);
+                };
+
+                const save = () => {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));
+                    UI.updateStats(stats);
+                };
+
+                const updateStat = (result, playerMode) => {
+                    if (result === 'Draw') stats.draws++;
+                    else if (playerMode === 'pvp') {
+                        stats.wins++; 
+                    } else {
+                        if (result === 'X') stats.wins++;
+                        else stats.losses++;
+                    }
+                    save();
+                };
+
+                const cycleTheme = () => {
+                    Config.currentThemeIdx = (Config.currentThemeIdx + 1) % Config.themes.length;
+                    document.documentElement.style.setProperty('--theme-hue', Config.themes[Config.currentThemeIdx]);
+                    AudioEngine.playClick();
+                };
+
+                return { load, updateStat, resetStats: () => { stats = {wins:0, losses:0, draws:0}; save(); AudioEngine.playClick(); }, cycleTheme };
+            })();
+
+            // --- 8. NAVIGATION MANAGER ---
+            const Navigation = (function() {
+                const hideAll = () => {
+                    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                };
+
+                const show = (id) => {
+                    hideAll();
+                    document.getElementById(id).classList.add('active');
+                    AudioEngine.playClick();
+                };
+
+                return {
+                    goToMenu: () => show('menu-screen'),
+                    goToModeSelection: () => show('mode-screen'),
+                    goToGame: () => {
+                        document.getElementById('hud').classList.add('active');
+                        show('game-screen');
+                    },
+                    showResult: (title, sub, isWin) => {
+                        UI.els.resTitle.textContent = title;
+                        UI.els.resTitle.style.color = isWin ? 'var(--neon-primary)' : (title==='DRAW' ? 'var(--text-main)' : 'var(--neon-alert)');
+                        UI.els.resTitle.style.textShadow = `0 0 20px ${isWin ? 'var(--neon-primary-dim)' : (title==='DRAW' ? 'rgba(255,255,255,0.2)' : 'rgba(255,0,0,0.3)')}`;
+                        UI.els.resSub.textContent = sub;
+                        setTimeout(() => document.getElementById('result-screen').classList.add('active'), 600); // Snappier result modal
+                    }
+                };
+            })();
+
+            // --- 9. MAIN GAME ENGINE (CONTROLLER) ---
+            const Engine = (function() {
+                let isAITurn = false;
+
+                const init = () => {
+                    AudioEngine.init();
+                    ParticleSystem.init();
+                    Settings.load();
+                    UI.createBoard();
+
+                    document.getElementById('btn-theme').addEventListener('click', Settings.cycleTheme);
+                    document.getElementById('btn-quit').addEventListener('click', () => {
+                        Logic.setActive(false);
+                        Navigation.goToMenu();
+                        document.getElementById('hud').classList.remove('active');
+                    });
+                    document.getElementById('btn-play-again').addEventListener('click', () => {
+                        startGame(Logic.getMode());
+                    });
+                    document.getElementById('btn-undo').addEventListener('click', () => {
+                        if(!isAITurn && Logic.undo()) {
+                            UI.syncBoard(Logic.getBoard());
+                            UI.updateTurnDisplay(Logic.getCurrentPlayer());
+                            AudioEngine.playClick();
+                        } else {
+                            Utils.vibrate([50]);
+                        }
+                    });
+                };
+
+                const startGame = (mode) => {
+                    AudioEngine.init(); 
+                    ParticleSystem.clear();
+                    Logic.reset(mode);
+                    UI.clearBoardUI();
+                    UI.updateTurnDisplay('X');
+                    isAITurn = false;
+                    
+                    UI.els.btnUndo.style.opacity = mode === 'pvp' ? '0.5' : '1'; 
+                    Navigation.goToGame();
+                };
+
+                const handleWin = (resultInfo) => {
+                    Logic.setActive(false);
+                    const { winner, combo } = resultInfo;
+                    const mode = Logic.getMode();
+
+                    if (winner === 'Draw') {
+                        AudioEngine.playDraw();
+                        Settings.updateStat('Draw', mode);
+                        Navigation.showResult('DRAW', 'Stalemate reached.', false);
+                    } else {
+                        UI.drawLaser(combo);
+                        UI.triggerScreenShake();
+                        Settings.updateStat(winner, mode);
+
+                        const c2 = UI.els.board.children[combo[1]];
+                        const center = Utils.getElementCenter(c2);
+                        const hue = winner === 'X' ? getComputedStyle(document.documentElement).getPropertyValue('--theme-hue') : (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--theme-hue')) + 120);
+                        
+                        ParticleSystem.emit(center.x, center.y, hue, 150, true);
+
+                        if (mode === 'pvp') {
+                            AudioEngine.playWin();
+                            Utils.vibrate([100, 50, 100, 50, 200]);
+                            Navigation.showResult(`${winner} WINS`, 'Brilliant execution.', true);
+                        } else {
+                            if (winner === 'X') {
+                                AudioEngine.playWin();
+                                Utils.vibrate([100, 50, 100, 50, 200]);
+                                Navigation.showResult('VICTORY', 'The machine falls.', true);
+                            } else {
+                                AudioEngine.playLose();
+                                Utils.vibrate([300]);
+                                Navigation.showResult('DEFEAT', 'Calculated demise.', false);
+                            }
+                        }
+                    }
+                };
+
+                const executeMove = async (index, player) => {
+                    if (Logic.makeMove(index)) {
+                        UI.renderMark(index, player);
+                        
+                        if (player === 'X') { AudioEngine.playMarkX(); Utils.vibrate(30); }
+                        else { AudioEngine.playMarkO(); Utils.vibrate(40); }
+                        
+                        const cellCenter = Utils.getElementCenter(UI.els.board.children[index]);
+                        const hue = player === 'X' ? getComputedStyle(document.documentElement).getPropertyValue('--theme-hue') : (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--theme-hue')) + 120);
+                        ParticleSystem.emit(cellCenter.x, cellCenter.y, hue, 20);
+
+                        const winData = Logic.checkWin();
+                        if (winData) {
+                            handleWin(winData);
+                            return;
+                        }
+
+                        Logic.switchPlayer();
+                        UI.updateTurnDisplay(Logic.getCurrentPlayer());
+
+                        if (Logic.getMode().startsWith('ai') && Logic.getCurrentPlayer() === 'O' && Logic.isActive()) {
+                            isAITurn = true;
+                            UI.els.boardWrapper.style.pointerEvents = 'none'; 
+                            
+                            const aiMove = await AI.computeMove(Logic.getBoard(), Logic.getMode());
+                            
+                            isAITurn = false;
+                            UI.els.boardWrapper.style.pointerEvents = 'auto'; 
+                            
+                            if (aiMove !== -1) executeMove(aiMove, 'O');
+                        }
+                    }
+                };
+
+                const handleCellClick = (index) => {
+                    if (!Logic.isActive() || isAITurn) return;
+                    if (Logic.getBoard()[index] !== null) {
+                        Utils.vibrate([50]);
+                        return;
+                    }
+                    executeMove(index, Logic.getCurrentPlayer());
+                };
+
+                return { init, startGame, handleCellClick };
+            })();
+
+            // --- 10. BOOTSTRAP ---
+            window.addEventListener('DOMContentLoaded', () => {
+                Engine.init();
+            });
+
+            return { Engine, Navigation, Settings };
+        })();
+    </script>
+</body>
+</html>
